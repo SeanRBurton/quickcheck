@@ -1,4 +1,6 @@
 use std::char;
+use std::f32;
+use std::f64;
 use std::collections::{
     BTreeMap,
     BTreeSet,
@@ -21,10 +23,19 @@ use rand::Rng;
 /// A value with type satisfying the `Gen` trait can be constructed with the
 /// `gen` function in this crate.
 pub trait Gen : Rng {
-    fn size(&self) -> usize;
+    fn size(&mut self) -> &mut usize;
     fn shrink_gen(&mut self) -> bool { false }
     fn unshrink_gen(&mut self) { }
     fn reset(&mut self) { }
+}
+
+fn nonzero_size<G: Gen>(g: &mut G) -> usize {
+    let s = *g.size();
+    if s == 0 {
+        1
+    } else {
+        s
+    }
 }
 
 /// StdGen is the default implementation of `Gen`.
@@ -67,7 +78,7 @@ impl<R: Rng> Rng for StdGen<R> {
 
 
 impl<R: Rng> Gen for StdGen<R> {
-    fn size(&self) -> usize { self.size }
+    fn size(&mut self) -> &mut usize { &mut self.size }
 
     fn shrink_gen(&mut self) -> bool {
 
@@ -258,7 +269,7 @@ impl_arb_for_tuple!((a, A), (b, B), (c, C), (d, D), (e, E), (f, F),
 
 impl<A: Arbitrary> Arbitrary for Vec<A> {
     fn arbitrary<G: Gen>(g: &mut G) -> Vec<A> {
-        let size = { let s = g.size(); g.gen_range(0, s) };
+        let size = { let s = nonzero_size(g); g.gen_range(0, s) };
         (0..size).map(|_| Arbitrary::arbitrary(g)).collect()
     }
 
@@ -438,7 +449,7 @@ impl<T: Arbitrary> Arbitrary for VecDeque<T> {
 
 impl Arbitrary for String {
     fn arbitrary<G: Gen>(g: &mut G) -> String {
-        let size = { let s = g.size(); g.gen_range(0, s) };
+        let size = { let s = nonzero_size(g); g.gen_range(0, s) };
         let mut s = String::with_capacity(size);
         for _ in 0..size {
             s.push(char::arbitrary(g));
@@ -506,11 +517,8 @@ macro_rules! unsigned_arbitrary {
             impl Arbitrary for $ty {
                 fn arbitrary<G: Gen>(g: &mut G) -> $ty {
                     #![allow(trivial_numeric_casts)]
-                    let mut s = g.size() as $ty;
-                    if s == 0 {
-                        s = s + 1;
-                    }
-                    g.gen_range(0, s)
+                    let s = *g.size() as $ty;
+                    g.gen_range(0, if s == 0 {1} else {s})
                 }
                 fn shrink(&self) -> Box<Iterator<Item=$ty>> {
                     unsigned_shrinker!($ty);
@@ -568,12 +576,19 @@ macro_rules! signed_shrinker {
 }
 
 macro_rules! signed_arbitrary {
-    ($($ty:ty),*) => {
+    ($($ty:ident),*) => {
         $(
             impl Arbitrary for $ty {
                 fn arbitrary<G: Gen>(g: &mut G) -> $ty {
-                    let s = g.size() as $ty;
-                    g.gen_range(-s, if s == 0 { 1 } else { s })
+                    let min = ::std::$ty::MIN;
+                    let max = ::std::$ty::MAX;
+                    let size = *g.size();
+                    if size >= max as usize {
+                        g.gen_range(min, max)
+                    } else {
+                        let s = size as $ty;
+                        g.gen_range(-s, if s == 0 {1} else {s})
+                    }
                 }
                 fn shrink(&self) -> Box<Iterator<Item=$ty>> {
                     signed_shrinker!($ty);
@@ -590,7 +605,7 @@ signed_arbitrary! {
 
 impl Arbitrary for f32 {
     fn arbitrary<G: Gen>(g: &mut G) -> f32 {
-        let s = g.size(); g.gen_range(-(s as f32), s as f32)
+        let s = *g.size(); g.gen_range(-(s as f32), s as f32 + f32::EPSILON)
     }
     fn shrink(&self) -> Box<Iterator<Item=f32>> {
         signed_shrinker!(i32);
@@ -601,7 +616,7 @@ impl Arbitrary for f32 {
 
 impl Arbitrary for f64 {
     fn arbitrary<G: Gen>(g: &mut G) -> f64 {
-        let s = g.size(); g.gen_range(-(s as f64), s as f64)
+        let s = *g.size(); g.gen_range(-(s as f64), s as f64 + f64::EPSILON)
     }
     fn shrink(&self) -> Box<Iterator<Item=f64>> {
         signed_shrinker!(i64);
