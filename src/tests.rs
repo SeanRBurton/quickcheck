@@ -162,3 +162,19 @@ fn regression_issue_83_signed() {
         .gen(StdGen::new(rand::thread_rng(), 1024))
         .quickcheck(prop as fn(i8) -> bool)
 }
+
+#[test]
+fn regression_issue_83_f32() {
+    fn prop(_: f32) -> bool { true }
+    QuickCheck::new()
+        .gen(StdGen::new(rand::thread_rng(), 1024))
+        .quickcheck(prop as fn(f32) -> bool)
+}
+
+#[test]
+fn regression_issue_83_f64() {
+    fn prop(_: f64) -> bool { true }
+    QuickCheck::new()
+        .gen(StdGen::new(rand::thread_rng(), 1024))
+        .quickcheck(prop as fn(f64) -> bool)
+}

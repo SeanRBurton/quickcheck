@@ -8,6 +8,7 @@ use tester::Status::{Discard, Fail, Pass};
 pub struct QuickCheck<G> {
     tests: usize,
     max_tests: usize,
+    max_size: usize,
     gen: G,
 }
 
@@ -20,11 +21,12 @@ impl QuickCheck<StdGen<rand::ThreadRng>> {
     ///
     /// By default, the maximum number of passed tests is set to `100`,
     /// the max number of overall tests is set to `10000` and the generator
-    /// is set to a `StdGen` with a default size of `100`.
+    /// is set to a `StdGen` with a maximum size of `100`.
     pub fn new() -> QuickCheck<StdGen<rand::ThreadRng>> {
         QuickCheck {
             tests: 100,
             max_tests: 10000,
+            max_size: 100,
             gen: StdGen::new(rand::thread_rng(), 100),
         }
     }
@@ -52,6 +54,15 @@ impl<G: Gen> QuickCheck<G> {
         self
     }
 
+    /// Set the maximum size passed to the generator.
+    ///
+    /// The generator size starts of at `0` and increases by `1` with every
+    /// passing test-case.
+    pub fn max_size(mut self, max_size: usize) -> QuickCheck<G> {
+        self.max_size = max_size;
+        self
+    }
+
     /// Set the random number generator to be used by QuickCheck.
     pub fn gen(mut self, gen: G) -> QuickCheck<G> {
         self.gen = gen;
@@ -75,7 +86,12 @@ impl<G: Gen> QuickCheck<G> {
             self.gen.reset();
             let mut r = f.result(&mut self.gen);
             match r.status {
-                Pass => ntests += 1,
+                Pass => {
+                    ntests += 1;
+                    if ntests < self.max_size {
+                        *self.gen.size() = ntests;
+                    }
+                }
                 Discard => continue,
                 Fail => {
                     while self.gen.shrink_gen() {
