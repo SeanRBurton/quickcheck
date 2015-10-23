@@ -150,8 +150,8 @@ fn testable_unit_panic() {
 fn regression_issue_83() {
     fn prop(_: u8) -> bool { true }
     QuickCheck::new()
-        .max_size(50)
-        .max_tests(50)
+        .max_size(1024)
+        .max_tests(1024)
         .quickcheck(prop as fn(u8) -> bool)
 }
 
@@ -159,8 +159,8 @@ fn regression_issue_83() {
 fn regression_issue_83_signed() {
     fn prop(_: i8) -> bool { true }
     QuickCheck::new()
-        .max_size(50)
-        .max_tests(50)
+        .max_size(1024)
+        .max_tests(1024)
         .quickcheck(prop as fn(i8) -> bool)
 }
 
@@ -168,8 +168,8 @@ fn regression_issue_83_signed() {
 fn regression_issue_83_f32() {
     fn prop(_: f32) -> bool { true }
     QuickCheck::new()
-        .max_size(50)
-        .max_tests(50)
+        .max_size(1024)
+        .max_tests(1024)
         .quickcheck(prop as fn(f32) -> bool)
 }
 
@@ -177,8 +177,8 @@ fn regression_issue_83_f32() {
 fn regression_issue_83_f64() {
     fn prop(_: f64) -> bool { true }
     QuickCheck::new()
-        .max_size(50)
-        .max_tests(50)
+        .max_size(1024)
+        .max_tests(1024)
         .quickcheck(prop as fn(f64) -> bool)
 }
 
@@ -190,8 +190,8 @@ fn test_overflow() {
         a <= ::std::u32::MAX - b
     }
     QuickCheck::new()
-        .max_size(50)
-        .max_tests(50)
+        .max_size(1024)
+        .max_tests(1024)
         .quickcheck(prop as fn(Interesting<u32>, Interesting<u32>) -> bool)
 }
 
@@ -204,24 +204,24 @@ fn test_nan() {
         x == x
     }
     QuickCheck::new()
-        .max_size(50)
-        .max_tests(50)
+        .max_size(1024)
+        .max_tests(1024)
         .quickcheck(prop as fn(Interesting<f32>, Interesting<f32>) -> bool)
 }
 
 #[test]
 fn test_interesting_f64() {
     fn prop(Interesting(x): Interesting<f64>) -> bool {
-        println!("c");
-        println!("x: {:?}", x);
+        if x.is_infinite() || x.is_nan() {
+            return true;
+        }
         let a = x.sin();
         let b = x.cos();
-        println!("d");
         (a * a + b * b - 1.0).abs() <=
-        3.0 * ::std::f64::EPSILON * (a + b).abs()
+        3.0 * ::std::f64::EPSILON * (a.abs() + b.abs())
     }
     QuickCheck::new()
-        .max_size(30)
-        .max_tests(30)
+        .max_size(1024)
+        .max_tests(1024)
         .quickcheck(prop as fn(Interesting<f64>) -> bool)
 }

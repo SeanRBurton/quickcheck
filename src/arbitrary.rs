@@ -478,7 +478,6 @@ macro_rules! unsigned_shrinker {
 
             impl UnsignedShrinker {
                 pub fn new(x: $ty) -> Box<Iterator<Item=$ty>> {
-                    println!("blah");
                     if x == 0 {
                         super::empty_shrinker()
                     } else {
@@ -553,7 +552,6 @@ macro_rules! signed_shrinker {
 
             impl SignedShrinker {
                 pub fn new(x: $ty) -> Box<Iterator<Item=$ty>> {
-                    println!("self_signed: {:?}", x);
                     if x == 0 {
                         super::empty_shrinker()
                     } else {
@@ -620,7 +618,6 @@ impl Arbitrary for f32 {
     }
     fn shrink(&self) -> Box<Iterator<Item=f32>> {
         signed_shrinker!(i32);
-        println!("self f32: {:?}", self);
         let it = shrinker::SignedShrinker::new(*self as i32);
         Box::new(it.map(|x| x as f32))
     }
@@ -634,8 +631,7 @@ impl Arbitrary for f64 {
     fn shrink(&self) -> Box<Iterator<Item=f64>> {
         signed_shrinker!(i64);
         let it = shrinker::SignedShrinker::new(*self as i64);
-        println!("self f64: {:?}", self);
-        Box::new(it.map(|x| {println!("shrunk: {:?}", x); x as f64}))
+        Box::new(it.map(|x| x as f64))
     }
 }
 
