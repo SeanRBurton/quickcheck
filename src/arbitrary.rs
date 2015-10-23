@@ -1,5 +1,6 @@
 use std::char;
 use std::{f32, f64};
+use std::mem;
 use std::collections::{
     BTreeMap,
     BTreeSet,
@@ -477,6 +478,7 @@ macro_rules! unsigned_shrinker {
 
             impl UnsignedShrinker {
                 pub fn new(x: $ty) -> Box<Iterator<Item=$ty>> {
+                    println!("blah");
                     if x == 0 {
                         super::empty_shrinker()
                     } else {
@@ -531,8 +533,18 @@ unsigned_arbitrary! {
     usize, u8, u16, u32, u64
 }
 
+macro_rules! safe_abs {
+    ($x:expr, $ty:ident) => {
+        if $x == ::std::$ty::MIN {
+            ::std::$ty::MAX
+        } else {
+            $x.abs()
+        }
+    }
+}
+
 macro_rules! signed_shrinker {
-    ($ty:ty) => {
+    ($ty:ident) => {
         mod shrinker {
             pub struct SignedShrinker {
                 x: $ty,
@@ -541,6 +553,7 @@ macro_rules! signed_shrinker {
 
             impl SignedShrinker {
                 pub fn new(x: $ty) -> Box<Iterator<Item=$ty>> {
+                    println!("self_signed: {:?}", x);
                     if x == 0 {
                         super::empty_shrinker()
                     } else {
@@ -550,7 +563,7 @@ macro_rules! signed_shrinker {
                         };
                         let mut items = vec![0];
                         if shrinker.i < 0 {
-                            items.push(shrinker.x.abs());
+                            items.push(safe_abs!(shrinker.x, $ty));
                         }
                         Box::new(items.into_iter().chain(shrinker))
                     }
@@ -560,7 +573,8 @@ macro_rules! signed_shrinker {
             impl Iterator for SignedShrinker {
                 type Item = $ty;
                 fn next(&mut self) -> Option<$ty> {
-                    if (self.x - self.i).abs() < self.x.abs() {
+                    if safe_abs!(self.x - self.i, $ty) <
+                       safe_abs!(self.x, $ty) {
                         let result = Some(self.x - self.i);
                         self.i = self.i / 2;
                         result
@@ -606,6 +620,7 @@ impl Arbitrary for f32 {
     }
     fn shrink(&self) -> Box<Iterator<Item=f32>> {
         signed_shrinker!(i32);
+        println!("self f32: {:?}", self);
         let it = shrinker::SignedShrinker::new(*self as i32);
         Box::new(it.map(|x| x as f32))
     }
@@ -619,7 +634,8 @@ impl Arbitrary for f64 {
     fn shrink(&self) -> Box<Iterator<Item=f64>> {
         signed_shrinker!(i64);
         let it = shrinker::SignedShrinker::new(*self as i64);
-        Box::new(it.map(|x| x as f64))
+        println!("self f64: {:?}", self);
+        Box::new(it.map(|x| {println!("shrunk: {:?}", x); x as f64}))
     }
 }
 
@@ -653,6 +669,210 @@ impl<T: Arbitrary + Clone + PartialOrd> Arbitrary for RangeTo<T> {
 impl Arbitrary for RangeFull {
     fn arbitrary<G: Gen>(_: &mut G) -> RangeFull { .. }
 }
+
+#[derive(Clone, Debug)]
+pub struct Interesting<T>(pub T);
+
+macro_rules! interesting_shrink {
+    ($ty:ty) => {
+        fn shrink(&self) -> Box<Iterator<Item=Interesting<$ty>>> {
+            let &Interesting(x) = self;
+            let it = x.shrink();
+            Box::new(it.map(|y| Interesting(y as $ty)))
+        }
+    }
+}
+
+macro_rules! unsigned_interesting_arbitrary {
+    ($($ty:ident),*) => {
+        $(
+            impl Arbitrary for Interesting<$ty> {
+                fn arbitrary<G: Gen>(g: &mut G) -> Interesting<$ty> {
+                    #![allow(trivial_numeric_casts)]
+                    let width = 8 * mem::size_of::<$ty>();
+                    Interesting({
+                        let mut b: [u8;1] = [0];
+                        g.fill_bytes(&mut b);
+                        match b[0] & 15 {
+                            0 => 0,
+                            1 => g.gen(),
+                            2 => {
+                                let Interesting(x): Interesting<$ty> =
+                                    Arbitrary::arbitrary(g);
+                                ::std::$ty::MAX - x
+                            }
+                            3 => {
+                                1 << g.gen_range(0, width)
+                            }
+                            4 => {
+                                let Interesting(x): Interesting<$ty> =
+                                    Arbitrary::arbitrary(g);
+                                !x
+                            }
+                            5 => {
+                                let Interesting(x): Interesting<$ty> =
+                                    Arbitrary::arbitrary(g);
+                                x << g.gen_range(0, width)
+                            }
+                            6 => {
+                                let Interesting(x): Interesting<$ty> =
+                                    Arbitrary::arbitrary(g);
+                                x >> g.gen_range(0, width)
+                            }
+                            7 if width > 8 => {
+                                let Interesting(x): Interesting<u8> =
+                                    Arbitrary::arbitrary(g);
+                                x as $ty
+                            }
+                            8 if width > 16 => {
+                                let Interesting(x): Interesting<u16> =
+                                    Arbitrary::arbitrary(g);
+                                x as $ty
+                            }
+                            9 if width > 32 => {
+                                let Interesting(x): Interesting<u32> =
+                                    Arbitrary::arbitrary(g);
+                                x as $ty
+                            }
+                            _ => Arbitrary::arbitrary(g),
+                        }
+                    })
+                }
+                interesting_shrink!($ty);
+            }
+        )*
+    }
+}
+
+unsigned_interesting_arbitrary! {
+    usize, u8, u16, u32, u64
+}
+
+macro_rules! signed_interesting_arbitrary {
+    ($(($unsigned: ident, $signed:ident)),*) => {
+        $(
+            impl Arbitrary for Interesting<$signed> {
+                fn arbitrary<G: Gen>(g: &mut G) -> Interesting<$signed> {
+                    let Interesting(x): Interesting<$unsigned> =
+                        Arbitrary::arbitrary(g);
+                    Interesting(x as $signed)
+                }
+                interesting_shrink!($signed);
+            }
+        )*
+    }
+}
+
+signed_interesting_arbitrary! {
+    (usize, isize), (u8, i8), (u16, i16), (u32, i32), (u64, i64)
+}
+
+macro_rules! interesting_float_arbitrary {
+    ($(($ty:ident, $int:ty)),*) => {$(
+
+impl Arbitrary for Interesting<$ty> {
+    fn arbitrary<G: Gen>(g: &mut G) -> Interesting<$ty> {
+        Interesting(
+            match g.next_u32() & 15 {
+                0 => 0 as $ty,
+                1 => g.gen(),
+                2 => $ty::EPSILON,
+                3 => $ty::MIN,
+                4 => $ty::MAX,
+                5 => $ty::NEG_INFINITY,
+                6 => $ty::INFINITY,
+                7 => $ty::NAN,
+                8 => {
+                    let Interesting(x): Interesting<$ty> =
+                        Arbitrary::arbitrary(g);
+                    -x
+                }
+                9 => {
+                    let Interesting(x): Interesting<$ty> =
+                        Arbitrary::arbitrary(g);
+                    x.round()
+                }
+                10 => {
+                    let Interesting(x): Interesting<$int> =
+                        Arbitrary::arbitrary(g);
+                    unsafe {
+                        mem::transmute(x)
+                    }
+                }
+                11 => {
+                    let Interesting(a): Interesting<$ty> =
+                        Arbitrary::arbitrary(g);
+                    let Interesting(b): Interesting<$ty> =
+                        Arbitrary::arbitrary(g);
+                    a + b
+                }
+                12 if 8 * mem::size_of::<$ty>() == 64 => {
+                    let Interesting(x): Interesting<f32> =
+                        Arbitrary::arbitrary(g);
+                    x as $ty
+                }
+                _ => Arbitrary::arbitrary(g),
+            }
+        )
+    }
+    interesting_shrink!($ty);
+})*}}
+
+interesting_float_arbitrary! {
+    (f32, u32), (f64, u64)
+}
+
+impl Arbitrary for Interesting<char> {
+    fn arbitrary<G: Gen>(g: &mut G) -> Interesting<char> {
+        let max: u32 = char::MAX as u32;
+        Interesting(match g.next_u32() & 3 {
+            0 => '\0',
+            1 => {
+                let Interesting(x): Interesting<u8> = Arbitrary::arbitrary(g);
+                char::from_u32(x as u32).unwrap()
+            }
+            2 => {
+                let mut x: u16 = 0xD800;
+                while x >= 0xD800 && x <= 0xDFFF {
+                    let Interesting(y): Interesting<u16> =
+                        Arbitrary::arbitrary(g);
+                    x = y
+                }
+                char::from_u32(x as u32).unwrap()
+            }
+            3 => {
+                let mut x: u32 = 0xD800;
+                while x >= 0xD800 && x <= 0xDFFF {
+                    let Interesting(y): Interesting<u32> =
+                        Arbitrary::arbitrary(g);
+                    x = y;
+                    x %= max;
+                }
+                char::from_u32(x).unwrap()
+            }
+            _ => unreachable!(),
+        })
+    }
+    interesting_shrink!(char);
+}
+
+impl <A: Arbitrary>Arbitrary for Interesting<Vec<A>>
+    where Interesting<A>: Arbitrary {
+    fn arbitrary<G: Gen>(g: &mut G) -> Interesting<Vec<A>> {
+        let size = { let s = nonzero_size(g); g.gen_range(0, s) };
+        Interesting((0..size).map(|_|
+            {let Interesting(x) = Arbitrary::arbitrary(g); x}
+        ).collect())
+    }
+    fn shrink(&self) -> Box<Iterator<Item=Interesting<Vec<A>>>> {
+        let &Interesting(ref v) = self;
+        let it = v.shrink();
+        Box::new(
+            it.map(|w| Interesting(w))
+        )
+    }
+}
+
 
 #[cfg(test)]
 mod test {

@@ -13,6 +13,7 @@ extern crate rand;
 pub use arbitrary::{
     Arbitrary, Gen, StdGen,
     empty_shrinker, single_shrinker,
+    Interesting,
 };
 pub use rand::Rng;
 pub use tester::{QuickCheck, Testable, TestResult, quickcheck};

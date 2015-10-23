@@ -1,6 +1,5 @@
 use std::cmp::Ord;
-use rand;
-use super::{QuickCheck, StdGen, TestResult, quickcheck};
+use super::{QuickCheck, TestResult, quickcheck, Interesting};
 
 #[test]
 fn prop_oob() {
@@ -151,7 +150,8 @@ fn testable_unit_panic() {
 fn regression_issue_83() {
     fn prop(_: u8) -> bool { true }
     QuickCheck::new()
-        .gen(StdGen::new(rand::thread_rng(), 1024))
+        .max_size(50)
+        .max_tests(50)
         .quickcheck(prop as fn(u8) -> bool)
 }
 
@@ -159,7 +159,8 @@ fn regression_issue_83() {
 fn regression_issue_83_signed() {
     fn prop(_: i8) -> bool { true }
     QuickCheck::new()
-        .gen(StdGen::new(rand::thread_rng(), 1024))
+        .max_size(50)
+        .max_tests(50)
         .quickcheck(prop as fn(i8) -> bool)
 }
 
@@ -167,7 +168,8 @@ fn regression_issue_83_signed() {
 fn regression_issue_83_f32() {
     fn prop(_: f32) -> bool { true }
     QuickCheck::new()
-        .gen(StdGen::new(rand::thread_rng(), 1024))
+        .max_size(50)
+        .max_tests(50)
         .quickcheck(prop as fn(f32) -> bool)
 }
 
@@ -175,6 +177,51 @@ fn regression_issue_83_f32() {
 fn regression_issue_83_f64() {
     fn prop(_: f64) -> bool { true }
     QuickCheck::new()
-        .gen(StdGen::new(rand::thread_rng(), 1024))
+        .max_size(50)
+        .max_tests(50)
         .quickcheck(prop as fn(f64) -> bool)
+}
+
+#[test]
+#[should_panic]
+fn test_overflow() {
+    fn prop(Interesting(a): Interesting<u32>,
+            Interesting(b): Interesting<u32>) -> bool {
+        a <= ::std::u32::MAX - b
+    }
+    QuickCheck::new()
+        .max_size(50)
+        .max_tests(50)
+        .quickcheck(prop as fn(Interesting<u32>, Interesting<u32>) -> bool)
+}
+
+#[test]
+#[should_panic]
+fn test_nan() {
+    fn prop(Interesting(a): Interesting<f32>,
+            Interesting(b): Interesting<f32>) -> bool {
+        let x = a / b;
+        x == x
+    }
+    QuickCheck::new()
+        .max_size(50)
+        .max_tests(50)
+        .quickcheck(prop as fn(Interesting<f32>, Interesting<f32>) -> bool)
+}
+
+#[test]
+fn test_interesting_f64() {
+    fn prop(Interesting(x): Interesting<f64>) -> bool {
+        println!("c");
+        println!("x: {:?}", x);
+        let a = x.sin();
+        let b = x.cos();
+        println!("d");
+        (a * a + b * b - 1.0).abs() <=
+        3.0 * ::std::f64::EPSILON * (a + b).abs()
+    }
+    QuickCheck::new()
+        .max_size(30)
+        .max_tests(30)
+        .quickcheck(prop as fn(Interesting<f64>) -> bool)
 }

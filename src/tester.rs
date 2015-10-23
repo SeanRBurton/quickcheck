@@ -79,12 +79,15 @@ impl<G: Gen> QuickCheck<G> {
     pub fn quicktest<A>(&mut self, f: A) -> Result<usize, TestResult>
                     where A: Testable {
         let mut ntests: usize = 0;
-        for _ in 0..self.max_tests {
+        for i in 0..self.max_tests {
+            println!("i: {:?}", i);
             if ntests >= self.tests {
                 break
             }
             self.gen.reset();
             let mut r = f.result(&mut self.gen);
+            println!("x");
+            println!("status: {:?}", r.status);
             match r.status {
                 Pass => {
                     ntests += 1;
@@ -94,7 +97,11 @@ impl<G: Gen> QuickCheck<G> {
                 }
                 Discard => continue,
                 Fail => {
-                    while self.gen.shrink_gen() {
+                    let max_steps = 8 * *self.gen.size();
+                    let mut j = 0;
+                    while self.gen.shrink_gen() && j < max_steps {
+                        println!("j: {:?}", j);
+                        j += 1;
                         let r_new = f.result(&mut self.gen);
                         if r_new.status == Fail {
                             r = r_new;
